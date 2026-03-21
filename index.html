@@ -51,12 +51,14 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    const colors = [ 0x4CAF50, 0xEEDC82, 0x8B5A2B, 0x808080, 0x2E8B57, 0xFFD700, 0x333333, 0xD3D3D3, 0x00FFFF, 0x50C878, 0xFF4500, 0x1E90FF, 0x8B4513, 0xADFF2F ];
+// 🎨 マテリアル
+    // ★ 最後に「ベッド(赤色: 0xDC143C)」を追加して、全部で15種類にするよ！
+    const colors = [ 0x4CAF50, 0xEEDC82, 0x8B5A2B, 0x808080, 0x2E8B57, 0xFFD700, 0x333333, 0xD3D3D3, 0x00FFFF, 0x50C878, 0xFF4500, 0x1E90FF, 0x8B4513, 0xADFF2F, 0xDC143C ];
     const mats = colors.map(c => new THREE.MeshLambertMaterial({ color: c }));
 
     let blockMap = new Map(); 
-    let blockData = Array.from({length: 14}, () => []);
-    let instancedMeshes = new Array(14); // ★修正：箱の数を14個に固定（ズレ防止！）
+    let blockData = Array.from({length: 15}, () => []); // ★ 14 を 15 に変更！
+    let instancedMeshes = new Array(15); // ★ 14 を 15 に変更！
     const geometry = new THREE.BoxGeometry(1, 1, 1);
 
     function addBlock(x, y, z, type, hp = null) {
@@ -172,7 +174,12 @@
                     }
                   }
                 }
-                addBlock(x+2, baseHeight+1, z+1, 5); 
+addBlock(x+2, baseHeight+1, z+1, 5); // 宝箱
+                
+                // ★ たまに家の中にベッド（赤いブロック: 14番）を置く！
+                if (Math.random() < 0.6) {
+                  addBlock(x+2, baseHeight+1, z+2, 14); 
+                }
                 
                 for(let fx=-3; fx<0; fx++) {
                   for(let fz=0; fz<3; fz++) {
@@ -204,8 +211,8 @@
     }
 
     function buildMeshes() {
-      instancedMeshes.forEach(m => { if(m) scene.remove(m) }); 
-      instancedMeshes = new Array(14); 
+instancedMeshes.forEach(m => { if(m) scene.remove(m) }); 
+      instancedMeshes = new Array(15); // ★ 14 から 15 に変更！
       const dummy = new THREE.Object3D();
       blockData.forEach((data, type) => {
         // ★修正：データが0個でも必ず箱（Mesh）を作る！これで番号がズレなくて置ける！
@@ -341,6 +348,9 @@ function setSpawn() {
       if(document.pointerLockElement !== document.body) return;
       raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
 
+// ★修正：ここに「型（ダミー）」を用意する魔法の1行を追加！！
+      const dummy = new THREE.Object3D();
+
       if (e.button === 0 && guardian && guardian.hp > 0) {
         const intersectsG = raycaster.intersectObjects(guardian.group.userData.meshes);
         if (intersectsG.length > 0 && intersectsG[0].distance < 8) {
@@ -383,11 +393,45 @@ function setSpawn() {
       const key = `${Math.round(pos.x)},${Math.round(pos.y)},${Math.round(pos.z)}`;
       const blockInfo = blockMap.get(key); if(!blockInfo) return;
 
+// 🟢 右クリック (置く・宝箱・食べる・寝る・バケツ)
       if(e.button === 2) {
+        // 📦 宝箱
         if (blockInfo.type === 5) {
           blockMap.delete(key); matrix.scale(new THREE.Vector3(0,0,0)); mesh.setMatrixAt(iId, matrix); mesh.instanceMatrix.needsUpdate = true;
           inv[7] += 2; inv[6] += 3; updateUI(); return;
         }
+
+        // 🛏️ ベッド（14）で寝る（HP全回復）
+        if (blockInfo.type === 14) {
+          if (playerHp < 5) {
+            playerHp = 5; updateUI();
+            // 一瞬画面を暗くして朝が来た感を出す
+            document.getElementById('blocker').style.backgroundColor = "rgba(0,0,0,0.85)"; 
+            document.getElementById('blocker').innerHTML = "<div style='font-size:30px;'>Zzz... 朝になってHPが全回復した！✨</div>";
+            document.getElementById('blocker').style.display = "flex"; 
+            setTimeout(() => { 
+              if(document.pointerLockElement === document.body) document.getElementById('blocker').style.display = "none"; 
+              document.getElementById('blocker').innerHTML = "<div>画面をクリックしてスタート！</div><div style='font-size: 16px; margin-top: 10px;'>Escキーでマウスを戻してセーブ！</div>";
+            }, 1500);
+          } else {
+            alert("元気いっぱいだから今は眠くないよ！");
+          }
+          return;
+        }
+
+        // 🍅 畑の作物（13）を食べる（HP1回復）
+        if (blockInfo.type === 13) {
+          if (playerHp < 5) {
+            playerHp++; updateUI();
+            // 食べたら作物は消える！
+            blockMap.delete(key); matrix.scale(new THREE.Vector3(0,0,0)); mesh.setMatrixAt(iId, matrix); mesh.instanceMatrix.needsUpdate = true;
+          } else {
+            alert("お腹いっぱいだ！");
+          }
+          return;
+        }
+
+        // 🪣 バケツの処理
 
         if (isBucketMode && inv.bucket > 0) {
           if (inv.liquid === 0) {
@@ -476,7 +520,7 @@ function setSpawn() {
       villagers.forEach(v => scene.remove(v.group)); villagers = [];
       if(guardian) scene.remove(guardian.group); guardian = null; guardianSpawned = false;
 
-      blockMap.clear(); blockData = Array.from({length: 14}, () => []);
+blockMap.clear(); blockData = Array.from({length: 15}, () => []); // ★ 14 から 15 に変更！
       saveData.blocks.forEach(b => {
         const [x,y,z] = b.k.split(',').map(Number);
         addBlock(x, y, z, b.t, b.hp);
