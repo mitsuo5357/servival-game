@@ -112,7 +112,15 @@
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(800, 800), new THREE.MeshLambertMaterial({ color: 0x1E90FF, transparent: true, opacity: 0.8 }));
     sea.rotation.x = -Math.PI / 2; sea.position.y = -0.2; scene.add(sea);
 
-    const player = new THREE.Group(); scene.add(player);
+// 👤 スキン（プレイヤー）を復活＆修正！
+    const player = new THREE.Group(); 
+    const pMat = new THREE.MeshStandardMaterial({ color: 0xff66b2, roughness: 0.3, metalness: 0.2 });
+    // ★修正：Y座標を全体的に0.5下げて接地させ、ゴーグルを前(Zのマイナス方向)に向ける！
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.4, 32, 32), pMat); body.position.y = -0.1; player.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 32, 32), pMat); head.position.y = 0.5; player.add(head);
+    const goggles = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.15, 0.2), new THREE.MeshStandardMaterial({ color: 0x00ffff }));
+    goggles.position.set(0, 0.5, -0.25); player.add(goggles);
+    scene.add(player);
 
     function generateWorld() {
       const radius = 80; // ★修正：サクサク動く＆広大なベストサイズに調整！
@@ -213,13 +221,32 @@
       });
     }
 
-    function setSpawn() {
-      for(let x = 30; x < 60; x++) {
-        for(let y = 15; y >= -5; y--) {
-          if(blockMap.has(`${x},${y},0`)) { player.position.set(x, y + 1, 0); return; }
+function setSpawn() {
+      // 島の端から端まで、安全な陸地（草か砂）を確実に見つける！
+      for(let x = -80; x <= 80; x++) {
+        for(let z = -80; z <= 80; z++) {
+          // 火山（中心から距離35以内）は熱いから避ける
+          if (x*x + z*z < 35*35) continue;
+          
+          // 空から下に向かって、一番上のブロックを探す
+          for(let y = 20; y >= 0; y--) {
+            const key = `${x},${y},${z}`;
+            if(blockMap.has(key)) {
+              const bInfo = blockMap.get(key);
+              // 見つけたブロックが草(0)か砂(1)なら合格！
+              if(bInfo.type === 0 || bInfo.type === 1) {
+                // 頭の上（2マス）が空いているか最終確認
+                if(!blockMap.has(`${x},${y+1},${z}`) && !blockMap.has(`${x},${y+2},${z}`)) {
+                  player.position.set(x, y + 1, z); 
+                  return; // 完璧な陸地を見つけたらそこで探索終了！
+                }
+              }
+            }
+          }
         }
       }
-      player.position.set(30, 10, 0); 
+      // 万が一（絶対ないはずだけど）見つからなかったら安全な場所へ
+      player.position.set(35, 15, 35); 
     }
 
     const light = new THREE.DirectionalLight(0xffffff, 1.2); light.position.set(50, 100, 50); scene.add(light);
@@ -532,15 +559,21 @@
       else { if (!onGround) velocityY -= gravity; else { velocityY = 0; player.position.y = feetY + 1; if (keys[' ']) velocityY = 0.2; } }
       player.position.y += velocityY;
 
+// ★Vキーでスキンを表示/非表示にする魔法！
+      player.visible = !isFirstPerson; 
+
+      // ★カメラの高さを「腰(1.0)」から「目線(1.4)」にアップ！これで判定のズレ解消！
+      const headY = player.position.y + 1.4; 
+
+// ★修正：スキンの高さを下げたので、カメラの高さも +1.0 から +0.5 に下げる！
       if (isFirstPerson) {
-        camera.position.set(player.position.x, player.position.y + 1.0, player.position.z);
+        camera.position.set(player.position.x, player.position.y + 0.5, player.position.z);
       } else {
         const camDist = 5; 
-        const idealCamPos = new THREE.Vector3(player.position.x + Math.sin(yaw) * camDist * Math.cos(pitch), player.position.y + 1.0 + Math.sin(pitch) * camDist, player.position.z + Math.cos(yaw) * camDist * Math.cos(pitch));
-        const playerPos = new THREE.Vector3(player.position.x, player.position.y + 1.0, player.position.z);
+        const idealCamPos = new THREE.Vector3(player.position.x + Math.sin(yaw) * camDist * Math.cos(pitch), player.position.y + 0.5 + Math.sin(pitch) * camDist, player.position.z + Math.cos(yaw) * camDist * Math.cos(pitch));
+        const playerPos = new THREE.Vector3(player.position.x, player.position.y + 0.5, player.position.z);
         const dir = idealCamPos.clone().sub(playerPos).normalize();
         
-        // ★神修正：カメラの壁ドン判定を「レイキャスト」から「超軽量計算」に変更して激重を解消！
         let finalDist = camDist;
         for(let d = 0.5; d <= camDist; d += 0.5) {
             let cx = Math.round(playerPos.x + dir.x * d);
